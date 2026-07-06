@@ -15,6 +15,7 @@ venv/
 # Logs
 logs/
 *.log
+output.json
 
 # IDE
 .idea/

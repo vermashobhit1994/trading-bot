@@ -210,7 +210,36 @@ class BinanceFuturesClient:
     def _summarize_payload(payload: dict[str, Any] | list[dict[str, Any]]) -> str:
         if isinstance(payload, list):
             return f"[list len={len(payload)}]"
-        return json.dumps(payload, separators=(",", ":"))
+
+        symbols = payload.get("symbols")
+        if isinstance(symbols, list):
+            if len(symbols) == 1:
+                symbol_name = symbols[0].get("symbol", "?")
+                return (
+                    f'{{"exchangeInfo": "1 symbol ({symbol_name})", '
+                    f'"serverTime": {payload.get("serverTime")}}}'
+                )
+            return (
+                f'{{"exchangeInfo": "{len(symbols)} symbols", '
+                f'"serverTime": {payload.get("serverTime")}}}'
+            )
+
+        if "orderId" in payload:
+            return json.dumps(
+                {
+                    "orderId": payload.get("orderId"),
+                    "symbol": payload.get("symbol"),
+                    "status": payload.get("status"),
+                    "executedQty": payload.get("executedQty"),
+                    "avgPrice": payload.get("avgPrice"),
+                },
+                separators=(",", ":"),
+            )
+
+        text = json.dumps(payload, separators=(",", ":"))
+        if len(text) > 300:
+            return f"{text[:300]}...[truncated]"
+        return text
 
 
 def create_client(settings: Settings) -> BinanceFuturesClient:

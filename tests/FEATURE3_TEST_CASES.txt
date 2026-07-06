@@ -1,0 +1,132 @@
+================================================================================
+FEATURE 3 - TEST CASES (MANUAL CLI)
+================================================================================
+
+Run all commands from project root:
+  cd J:\projects\trading-bot
+
+Use:
+  .\.venv\Scripts\python.exe cli.py <command> ...
+
+To hide INFO logs and see only results:
+  .\.venv\Scripts\python.exe cli.py <command> ... 2>nul
+
+================================================================================
+AUTOMATED TESTS (RECOMMENDED)
+================================================================================
+
+Install test dependencies:
+  .\.venv\Scripts\python.exe -m pip install pytest
+
+Run unit + CLI tests (no network):
+  .\.venv\Scripts\python.exe -m pytest tests/ -v -m "not integration"
+
+Run all tests including live Binance demo API:
+  .\.venv\Scripts\python.exe -m pytest tests/ -v -m integration
+
+================================================================================
+MANUAL TEST CASES
+================================================================================
+
+TC-01  Valid MARKET validation
+Command:
+  .\.venv\Scripts\python.exe cli.py validate_order --symbol BTCUSDT --side BUY --type MARKET --quantity 0.001 2>nul
+Expected:
+  - Exit code 0
+  - Shows "=== Order Request ==="
+  - Shows "Order validation passed."
+
+TC-02  Valid LIMIT validation
+Command:
+  .\.venv\Scripts\python.exe cli.py validate_order --symbol BTCUSDT --side SELL --type LIMIT --quantity 0.001 --price 95000 2>nul
+Expected:
+  - Exit code 0
+  - Shows price in request summary
+  - "Order validation passed."
+
+TC-03  Invalid symbol
+Command:
+  .\.venv\Scripts\python.exe cli.py validate_order --symbol INVALID --side BUY --type MARKET --quantity 0.001 2>nul
+Expected:
+  - Exit code 1
+  - "Validation error: Invalid symbol"
+
+TC-04  LIMIT without price
+Command:
+  .\.venv\Scripts\python.exe cli.py validate_order --symbol BTCUSDT --side BUY --type LIMIT --quantity 0.001 2>nul
+Expected:
+  - Exit code 1
+  - "Validation error: Price is required for LIMIT orders."
+
+TC-05  MARKET with price (not allowed)
+Command:
+  .\.venv\Scripts\python.exe cli.py validate_order --symbol BTCUSDT --side BUY --type MARKET --quantity 0.001 --price 90000 2>nul
+Expected:
+  - Exit code 1
+  - "Validation error: Price must not be provided for MARKET orders."
+
+TC-06  Negative quantity
+Command:
+  .\.venv\Scripts\python.exe cli.py validate_order --symbol BTCUSDT --side BUY --type MARKET --quantity -1 2>nul
+Expected:
+  - Exit code 1
+  - "Validation error: Quantity must be greater than zero."
+
+TC-07  Invalid side
+Command:
+  .\.venv\Scripts\python.exe cli.py validate_order --symbol BTCUSDT --side HOLD --type MARKET --quantity 0.001 2>nul
+Expected:
+  - Exit code 1
+  - "Validation error: Invalid side"
+
+TC-08  Invalid order type
+Command:
+  .\.venv\Scripts\python.exe cli.py validate_order --symbol BTCUSDT --side BUY --type STOP --quantity 0.001 2>nul
+Expected:
+  - Exit code 1
+  - "Validation error: Invalid order type"
+
+TC-09  Dry-run MARKET (Binance test endpoint)
+Command:
+  .\.venv\Scripts\python.exe cli.py order --symbol BTCUSDT --side BUY --type MARKET --quantity 0.001 --dry-run 2>nul
+Expected:
+  - Exit code 0
+  - "=== Order Request ==="
+  - "Dry run successful. Order parameters accepted by Binance."
+
+TC-10  Dry-run LIMIT
+Command:
+  .\.venv\Scripts\python.exe cli.py order --symbol BTCUSDT --side BUY --type LIMIT --quantity 0.001 --price 65000 --dry-run 2>nul
+Expected:
+  - Exit code 0
+  - Shows price in request summary
+  - "Dry run successful."
+
+TC-11  Real MARKET order (optional - places demo trade)
+Command:
+  .\.venv\Scripts\python.exe cli.py order --symbol BTCUSDT --side BUY --type MARKET --quantity 0.001 2>nul
+Expected:
+  - Exit code 0
+  - "=== Order Response ==="
+  - orderId > 0
+  - status FILLED (for MARKET)
+  - "Order placed successfully."
+
+TC-12  Python validator one-liner
+Command:
+  .\.venv\Scripts\python.exe -c "from bot.validators import build_order_request; o=build_order_request(symbol='BTCUSDT', side='BUY', order_type='MARKET', quantity='0.001'); print(o)"
+Expected:
+  - Prints OrderRequest with BTCUSDT, BUY, MARKET, quantity 0.001
+
+================================================================================
+PASS CRITERIA FOR FEATURE 3
+================================================================================
+
+Feature 3 is working if:
+  1. TC-01 through TC-10 pass
+  2. Automated tests pass:
+       pytest tests/ -v -m "not integration"
+  3. Invalid inputs always return exit code 1 with clear Validation error message
+  4. Valid inputs return exit code 0 with Order validation passed / Dry run successful
+
+================================================================================
