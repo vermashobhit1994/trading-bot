@@ -40,9 +40,9 @@ FEATURE OVERVIEW
   --  -----------------------------------  ------  -----------
   1   Project scaffold & config            30 min  COMPLETE
   2   Binance Futures signed HTTP client   45 min  COMPLETE
-  3   Order models + validation            30 min  PENDING
-  4   Place MARKET / LIMIT orders          45 min  PENDING
-  5   CLI order command                    30 min  PENDING
+  3   Order models + validation            30 min  COMPLETE
+  4   Place MARKET / LIMIT orders          45 min  COMPLETE
+  5   CLI order command                    30 min  COMPLETE
   6   Logging (extended for orders)        20 min  PARTIAL
   7   Exception handling (order flows)     30 min  PARTIAL
   8   Testnet smoke test & polish          30 min  PENDING
@@ -153,7 +153,7 @@ Manual checkpoint:
 
 ================================================================================
 FEATURE 3: ORDER MODELS + VALIDATION
-Status: PENDING
+Status: COMPLETE
 ================================================================================
 
 Goal:
@@ -186,26 +186,37 @@ Docs:
 
 ================================================================================
 FEATURE 4: PLACE MARKET & LIMIT ORDERS
-Status: PENDING
+Status: COMPLETE
 ================================================================================
 
 Goal:
   Single place_order(order: OrderRequest) -> OrderResponse method.
 
-Planned steps:
-  1. Create bot/orders.py
-  2. Map OrderRequest to API params:
-
-       MARKET: symbol, side, type=MARKET, quantity
-       LIMIT:  symbol, side, type=LIMIT, quantity, price, timeInForce=GTC
-
-  3. Set newOrderRespType=RESULT for status, executedQty, avgPrice in response
-  4. POST /fapi/v1/order via BinanceFuturesClient.send_signed_request()
-  5. Map response to OrderResponse
+Implemented in bot/orders.py:
+  1. validate_order_with_exchange() — exchange filter check before submit
+  2. test_order() — POST /fapi/v1/order/test (dry run, no trade)
+  3. place_order() — POST /fapi/v1/order (real order)
+  4. OrderRequest.to_api_params() — MARKET/LIMIT + newOrderRespType=RESULT
+  5. OrderResponse.from_api() — orderId, status, executedQty, avgPrice
+  6. format_request_summary / format_response_summary / format_result_message
 
 Order API parameters:
-  MARKET BUY/SELL:  symbol, side, type, quantity
+  MARKET BUY/SELL:  symbol, side, type, quantity, newOrderRespType=RESULT
   LIMIT BUY/SELL:   symbol, side, type, quantity, price, timeInForce=GTC
+
+How to test:
+  Offline:
+    .\.venv\Scripts\python.exe -m pytest tests\test_orders.py -v
+    scripts\run_feature4_tests.bat
+
+  Live dry-run (no real order):
+    .\.venv\Scripts\python.exe cli.py order --symbol BTCUSDT --side BUY --type MARKET --quantity 0.001 --dry-run
+
+  Live real order (demo funds):
+    .\.venv\Scripts\python.exe cli.py order --symbol BTCUSDT --side BUY --type MARKET --quantity 0.001
+
+Manual test cases:
+  tests\FEATURE4_TEST_CASES.txt
 
 Docs:
   New Order:
@@ -213,13 +224,9 @@ Docs:
   Test New Order (dry run):
     https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest-api/Test-New-Order
 
-Manual checkpoint:
-  First live test: user chooses symbol and small quantity (e.g. BTCUSDT 0.001).
-  Use POST /fapi/v1/order/test first if zero-risk validation is preferred.
-
 ================================================================================
 FEATURE 5: CLI ORDER COMMAND
-Status: PENDING
+Status: COMPLETE
 ================================================================================
 
 Goal:

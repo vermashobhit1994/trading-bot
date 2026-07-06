@@ -1,0 +1,134 @@
+================================================================================
+FEATURE 4 — PLACE MARKET & LIMIT ORDERS — MANUAL TEST CASES
+================================================================================
+
+Prerequisites:
+  - .env configured with demo API keys (see .env.example)
+  - BINANCE_FUTURES_BASE_URL=https://demo-fapi.binance.com
+  - TRADING_ENV=testnet
+  - Virtual environment: .\.venv\Scripts\python.exe
+
+Run automated offline tests:
+  .\.venv\Scripts\python.exe -m pytest tests\test_orders.py -v
+
+Run automated live API tests (dry-run only, no real orders):
+  .\.venv\Scripts\python.exe -m pytest tests\test_integration_feature4.py -v -m integration
+
+================================================================================
+TC-F4-01  Offline unit tests (no network)
+================================================================================
+Command:
+  .\.venv\Scripts\python.exe -m pytest tests\test_orders.py -v
+
+Expected:
+  All tests pass (place_order, test_order, formatters, exchange validation).
+
+================================================================================
+TC-F4-02  Dry-run MARKET BUY (zero risk)
+================================================================================
+Command:
+  .\.venv\Scripts\python.exe cli.py order --symbol BTCUSDT --side BUY --type MARKET --quantity 0.001 --dry-run
+
+Expected:
+  - Exit code 0
+  - === Order Request === with Symbol/Side/Type/Quantity
+  - Mode: DRY-RUN
+  - "Dry run successful. Order parameters accepted by Binance."
+  - No orderId in output (test endpoint returns {})
+
+================================================================================
+TC-F4-03  Dry-run LIMIT SELL (zero risk)
+================================================================================
+Command:
+  .\.venv\Scripts\python.exe cli.py order --symbol BTCUSDT --side SELL --type LIMIT --quantity 0.001 --price 200000 --dry-run
+
+Expected:
+  - Exit code 0
+  - Price: 200000 shown in request summary
+  - Dry run successful
+
+================================================================================
+TC-F4-04  Real MARKET BUY (demo funds — small quantity)
+================================================================================
+Command:
+  .\.venv\Scripts\python.exe cli.py order --symbol BTCUSDT --side BUY --type MARKET --quantity 0.001
+
+Expected:
+  - Exit code 0
+  - === Order Response === with Order ID, Status, Executed Qty, Avg Price
+  - Status: FILLED (or PARTIALLY_FILLED in rare cases)
+  - "Order placed and filled successfully."
+  - logs\trading_bot.log contains POST /fapi/v1/order
+
+================================================================================
+TC-F4-05  Real LIMIT order (demo — far from market, stays NEW)
+================================================================================
+Command:
+  .\.venv\Scripts\python.exe cli.py order --symbol BTCUSDT --side BUY --type LIMIT --quantity 0.001 --price 50000
+
+Expected:
+  - Exit code 0
+  - Status: NEW
+  - Executed Qty: 0
+  - "Limit order placed successfully and is open on the book."
+
+Note: Cancel manually in Binance demo if needed (not yet in CLI).
+
+================================================================================
+TC-F4-06  MARKET order missing quantity step (validation)
+================================================================================
+Command:
+  .\.venv\Scripts\python.exe cli.py order --symbol BTCUSDT --side BUY --type MARKET --quantity 0.0001 --dry-run
+
+Expected:
+  - Exit code 1
+  - Validation error about step size or min quantity
+  - No API order placed
+
+================================================================================
+TC-F4-07  LIMIT order below min notional (validation)
+================================================================================
+Command:
+  .\.venv\Scripts\python.exe cli.py order --symbol BTCUSDT --side BUY --type LIMIT --quantity 0.001 --price 1 --dry-run
+
+Expected:
+  - Exit code 1
+  - Validation error (min notional or min price)
+
+================================================================================
+TC-F4-08  Insufficient margin (API error)
+================================================================================
+Setup:
+  Use quantity larger than demo balance allows, e.g. quantity 100
+
+Command:
+  .\.venv\Scripts\python.exe cli.py order --symbol BTCUSDT --side BUY --type MARKET --quantity 100 --dry-run
+
+Expected:
+  - Exit code 2
+  - Binance API error (e.g. margin not sufficient -2019)
+
+================================================================================
+TC-F4-09  Verify logging
+================================================================================
+After TC-F4-04:
+  type logs\trading_bot.log
+
+Expected:
+  - "Placing order via /fapi/v1/order with params=..."
+  - Response logged (signature redacted)
+  - newOrderRespType=RESULT in params
+
+================================================================================
+TC-F4-10  API param mapping check (offline)
+================================================================================
+Command:
+  .\.venv\Scripts\python.exe -m pytest tests\test_models.py::TestOrderRequest -v
+
+Expected:
+  - MARKET params: symbol, side, type, quantity, newOrderRespType=RESULT
+  - LIMIT params: includes price, timeInForce=GTC
+
+================================================================================
+END
+================================================================================
