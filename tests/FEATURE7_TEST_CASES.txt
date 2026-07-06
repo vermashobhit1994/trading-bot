@@ -1,0 +1,168 @@
+================================================================================
+FEATURE 7 — EXCEPTION HANDLING (ORDER FLOWS) — MANUAL TEST CASES
+================================================================================
+
+Prerequisites:
+  - .env configured (demo API keys for most tests)
+  - Virtual environment: .\.venv\Scripts\python.exe
+
+Run automated offline tests:
+  .\.venv\Scripts\python.exe -m pytest tests\test_error_messages.py tests\test_cli_errors.py -v
+
+================================================================================
+TC-F7-01  Validation error — exit code 1 (no API call for bad symbol)
+================================================================================
+Command:
+  .\.venv\Scripts\python.exe cli.py validate_order --symbol INVALID --side BUY --type MARKET --quantity 0.001 2>nul
+  echo Exit code: %ERRORLEVEL%
+
+Expected:
+  - Exit code 1
+  - "Validation error:" in output (red on terminal)
+  - No Binance API error
+
+================================================================================
+TC-F7-02  Validation error — LIMIT without price
+================================================================================
+Command:
+  .\.venv\Scripts\python.exe cli.py order --symbol BTCUSDT --side BUY --type LIMIT --quantity 0.001 2>nul
+
+Expected:
+  - Exit code 1
+  - "Validation error: Price is required for LIMIT orders."
+
+================================================================================
+TC-F7-03  Binance precision error (-1111) with friendly hint
+================================================================================
+Command:
+  .\.venv\Scripts\python.exe cli.py order --symbol BTCUSDT --side BUY --type MARKET --quantity 0.0015 --dry-run 2>nul
+
+Expected:
+  - Exit code 1 (validation before API) OR exit 2 if exchange rejects
+  - If API reached with bad precision: message includes hint about step/tick size
+  - Message format: "Validation error:" OR "Binance API error -1111" with "Precision error"
+
+Note: 0.0015 fails local step-size validation (exit 1) — that's also correct.
+
+================================================================================
+TC-F7-04  Insufficient margin (-2019) with friendly hint
+================================================================================
+Command:
+  .\.venv\Scripts\python.exe cli.py order --symbol BTCUSDT --side BUY --type MARKET --quantity 100 --dry-run 2>nul
+
+Expected:
+  - Exit code 2
+  - "Binance API error -2019" in output
+  - Hint contains "Insufficient margin"
+
+================================================================================
+TC-F7-05  Min notional (-4164) with friendly hint
+================================================================================
+Command:
+  .\.venv\Scripts\python.exe cli.py order --symbol BTCUSDT --side BUY --type LIMIT --quantity 0.001 --price 1 --dry-run 2>nul
+
+Expected:
+  - Exit code 1 (local min notional) OR exit 2 from API
+  - User sees clear error (validation or -4164 with "notional" hint)
+
+================================================================================
+TC-F7-06  Invalid signature (-1022) with friendly hint
+================================================================================
+Setup:
+  Temporarily change SECRET_KEY in .env to a wrong value (e.g. append "x")
+  Restore correct value after test.
+
+Command:
+  .\.venv\Scripts\python.exe cli.py test_auth 2>nul
+
+Expected:
+  - Exit code 2
+  - "Binance API error -1022"
+  - Hint: "Invalid signature — verify SECRET_KEY"
+
+================================================================================
+TC-F7-07  Invalid API key (-2015) with friendly hint
+================================================================================
+Setup:
+  Temporarily set BINANCE_API_KEY to invalid value in .env
+  Restore after test.
+
+Command:
+  .\.venv\Scripts\python.exe cli.py test_auth 2>nul
+
+Expected:
+  - Exit code 2
+  - "Binance API error -2015"
+  - Hint about Demo Trading keys vs mainnet
+
+================================================================================
+TC-F7-08  Configuration error — exit code 1
+================================================================================
+Setup:
+  Rename .env temporarily OR remove BINANCE_API_KEY line
+
+Command:
+  .\.venv\Scripts\python.exe cli.py check_config 2>nul
+
+Expected:
+  - Exit code 1
+  - "Configuration error:" in output
+
+Restore .env after test.
+
+================================================================================
+TC-F7-09  Mainnet blocked without CONFIRM_LIVE_TRADING
+================================================================================
+Setup:
+  Only if testing mainnet config — set TRADING_ENV=mainnet, CONFIRM_LIVE_TRADING=false
+
+Command:
+  .\.venv\Scripts\python.exe cli.py order --symbol BTCUSDT --side BUY --type MARKET --quantity 0.001 2>nul
+
+Expected:
+  - Exit code 1
+  - "Mainnet order blocked"
+
+================================================================================
+TC-F7-10  No silent crash — app always prints error and exits
+================================================================================
+Command:
+  Run TC-F7-02, TC-F7-04, TC-F7-01 in sequence
+
+Expected:
+  - Each command returns to prompt with non-zero exit code
+  - No Python traceback shown to user for expected errors
+  - errors also logged in logs\trading_bot.log for API failures
+
+================================================================================
+TC-F7-11  Offline unit tests for all mapped error codes
+================================================================================
+Command:
+  .\.venv\Scripts\python.exe -m pytest tests\test_error_messages.py -v
+
+Expected:
+  - All tests pass (hints for -1111, -2019, -1022, unknown codes, network)
+
+================================================================================
+TC-F7-12  CLI displays formatted Binance error (mocked offline)
+================================================================================
+Command:
+  .\.venv\Scripts\python.exe -m pytest tests\test_cli_errors.py -v
+
+Expected:
+  - All tests pass — CLI uses format_binance_api_error()
+
+================================================================================
+PASS CRITERIA FOR FEATURE 7
+================================================================================
+
+Feature 7 is working if:
+  1. Validation errors → exit 1 with "Validation error:"
+  2. API/network errors → exit 2 with friendly message + hint
+  3. Common codes (-1111, -2019, -4164, -1021, -1022, -2015) show actionable hints
+  4. No unhandled tracebacks for normal failure paths
+  5. pytest tests\test_error_messages.py and tests\test_cli_errors.py pass
+
+================================================================================
+END
+================================================================================

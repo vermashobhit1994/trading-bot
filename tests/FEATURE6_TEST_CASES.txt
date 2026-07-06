@@ -1,0 +1,124 @@
+================================================================================
+FEATURE 6 — LOGGING (EXTENDED FOR ORDERS) — MANUAL TEST CASES
+================================================================================
+
+Prerequisites:
+  - .env configured with demo API keys
+  - BINANCE_FUTURES_BASE_URL=https://demo-fapi.binance.com
+  - LOG_LEVEL=INFO in .env (default)
+  - Virtual environment: .\.venv\Scripts\python.exe
+
+Run automated offline tests:
+  .\.venv\Scripts\python.exe -m pytest tests\test_logging_config.py -v
+
+================================================================================
+TC-F6-01  Log file created on first CLI run
+================================================================================
+Command:
+  del logs\trading_bot.log 2>nul
+  .\.venv\Scripts\python.exe cli.py check_config 2>nul
+
+Expected:
+  - Exit code 0
+  - File logs\trading_bot.log exists
+  - Log contains "Logging initialized. Log file:"
+
+================================================================================
+TC-F6-02  Console shows INFO only (no DEBUG spam)
+================================================================================
+Command:
+  .\.venv\Scripts\python.exe cli.py ping 2>&1 | findstr /i "DEBUG"
+
+Expected:
+  - No lines containing "DEBUG" on console (findstr returns nothing / exit 1)
+  - Console may show one INFO line: "Logging initialized..."
+
+================================================================================
+TC-F6-03  Order request summary logged before submit
+================================================================================
+Command:
+  .\.venv\Scripts\python.exe cli.py order --symbol BTCUSDT --side BUY --type MARKET --quantity 0.001 --dry-run 2>nul
+  findstr /i "Order dry-run request" logs\trading_bot.log
+  findstr /i "=== Order Request ===" logs\trading_bot.log
+
+Expected:
+  - Log file contains "Order dry-run request:" or "=== Order Request ==="
+  - Symbol BTCUSDT, Side BUY, Type MARKET, Quantity 0.001 appear in log
+
+================================================================================
+TC-F6-04  API request/response logged (signature redacted)
+================================================================================
+Command:
+  .\.venv\Scripts\python.exe cli.py ping 2>nul
+  findstr /i "API request" logs\trading_bot.log
+  findstr /i "signature" logs\trading_bot.log
+
+Expected:
+  - Log contains "API request | GET /fapi/v1/ping"
+  - Log contains "API response | GET /fapi/v1/ping"
+  - If signature appears, value is ***REDACTED*** (not a real HMAC)
+
+================================================================================
+TC-F6-05  DEBUG full payloads in file only (not truncated)
+================================================================================
+Setup:
+  Ensure LOG_LEVEL=INFO in .env
+
+Command:
+  .\.venv\Scripts\python.exe cli.py order --symbol BTCUSDT --side BUY --type MARKET --quantity 0.001 --dry-run 2>nul
+  findstr /i "API response (full)" logs\trading_bot.log
+
+Expected:
+  - Log file contains at least one line: "API response (full)"
+  - Full line is NOT cut off with "...[truncated]" (that only appears on INFO summary lines)
+
+================================================================================
+TC-F6-06  Real order logs request AND response summary
+================================================================================
+Command (optional — uses demo funds):
+  .\.venv\Scripts\python.exe cli.py order --symbol BTCUSDT --side BUY --type MARKET --quantity 0.001 2>nul
+  findstr /i "Order submit" logs\trading_bot.log
+
+Expected:
+  - "Order submit request:" with request summary
+  - "Order submit response:" with Order ID, Status, Executed Qty
+
+================================================================================
+TC-F6-07  exchangeInfo truncated on INFO, full on DEBUG
+================================================================================
+Command:
+  .\.venv\Scripts\python.exe cli.py validate_order --symbol BTCUSDT --side BUY --type MARKET --quantity 0.001 2>nul
+  findstr /i "exchangeInfo" logs\trading_bot.log
+
+Expected:
+  - INFO-level response summary shows symbol count (e.g. "723 symbols") not full JSON
+  - DEBUG "(full)" line may contain larger payload
+
+================================================================================
+TC-F6-08  LOG_LEVEL=DEBUG shows DEBUG on console too
+================================================================================
+Setup:
+  Temporarily set LOG_LEVEL=DEBUG in .env
+
+Command:
+  .\.venv\Scripts\python.exe cli.py ping 2>&1 | findstr /i "DEBUG"
+
+Expected:
+  - Console shows DEBUG lines (e.g. "API request (full)" or "API response (full)")
+
+Restore LOG_LEVEL=INFO after test.
+
+================================================================================
+PASS CRITERIA FOR FEATURE 6
+================================================================================
+
+Feature 6 is working if:
+  1. logs\trading_bot.log is created and grows on each API call
+  2. Order request summary appears in log before dry-run or live submit
+  3. Signatures never appear as real HMAC values in logs
+  4. File has DEBUG full payloads; console at INFO stays readable
+  5. pytest tests\test_logging_config.py passes
+
+================================================================================
+END
+================================================================================

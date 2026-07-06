@@ -28,10 +28,12 @@ def test_order(client: BinanceFuturesClient, order: OrderRequest) -> dict[str, A
     """Validate an order with Binance without placing it."""
     validate_order_with_exchange(client, order)
     params = order.to_api_params()
-    logger.info("Testing order via %s with params=%s", ORDER_TEST_ENDPOINT, params)
+    logger.info("Order dry-run request:\n%s", format_request_summary(order))
+    logger.debug("Dry-run API params: %s", params)
     response = client.send_signed_request("POST", ORDER_TEST_ENDPOINT, params=params)
     if not isinstance(response, dict):
         raise ValueError("Unexpected test order response format.")
+    logger.info("Dry-run accepted by Binance for %s %s %s", order.symbol, order.side.value, order.order_type.value)
     return response
 
 
@@ -39,11 +41,15 @@ def place_order(client: BinanceFuturesClient, order: OrderRequest) -> OrderRespo
     """Place a MARKET or LIMIT order on Binance Futures."""
     validate_order_with_exchange(client, order)
     params = order.to_api_params()
-    logger.info("Placing order via %s with params=%s", ORDER_ENDPOINT, params)
+    logger.info("Order submit request:\n%s", format_request_summary(order))
+    logger.debug("Order API params: %s", params)
     response = client.send_signed_request("POST", ORDER_ENDPOINT, params=params)
     if not isinstance(response, dict):
         raise ValueError("Unexpected order response format.")
-    return OrderResponse.from_api(response)
+    result = OrderResponse.from_api(response)
+    logger.info("Order submit response:\n%s", format_response_summary(result))
+    logger.debug("Order raw API response: %s", response)
+    return result
 
 
 def format_request_summary(order: OrderRequest) -> str:

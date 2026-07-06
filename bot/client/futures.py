@@ -115,6 +115,12 @@ class BinanceFuturesClient:
             query_string = build_query_string(request_params)
 
         log_params = self._redact_params(request_params)
+        logger.debug(
+            "API request (full) | %s %s | params=%s",
+            method.upper(),
+            endpoint,
+            log_params,
+        )
         logger.info(
             "API request | %s %s | params=%s",
             method.upper(),
@@ -129,6 +135,13 @@ class BinanceFuturesClient:
         )
 
         payload = self._parse_response(response)
+        logger.debug(
+            "API response (full) | %s %s | status=%s | body=%s",
+            method.upper(),
+            endpoint,
+            response.status_code,
+            self._full_payload(payload),
+        )
         logger.info(
             "API response | %s %s | status=%s | body=%s",
             method.upper(),
@@ -240,6 +253,11 @@ class BinanceFuturesClient:
         if len(text) > 300:
             return f"{text[:300]}...[truncated]"
         return text
+
+    @staticmethod
+    def _full_payload(payload: dict[str, Any] | list[dict[str, Any]]) -> str:
+        """Serialize the full response for DEBUG file logging."""
+        return json.dumps(payload, separators=(",", ":"))
 
 
 def create_client(settings: Settings) -> BinanceFuturesClient:

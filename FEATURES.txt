@@ -43,9 +43,9 @@ FEATURE OVERVIEW
   3   Order models + validation            30 min  COMPLETE
   4   Place MARKET / LIMIT orders          45 min  COMPLETE
   5   CLI order command                    30 min  COMPLETE
-  6   Logging (extended for orders)        20 min  PARTIAL
-  7   Exception handling (order flows)     30 min  PARTIAL
-  8   Testnet smoke test & polish          30 min  PENDING
+  6   Logging (extended for orders)        20 min  COMPLETE
+  7   Exception handling (order flows)     30 min  COMPLETE
+  8   Testnet smoke test & polish          30 min  COMPLETE
 
 ================================================================================
 FEATURE 1: PROJECT SCAFFOLD & CONFIG
@@ -259,57 +259,69 @@ Exit codes:
 
 ================================================================================
 FEATURE 6: LOGGING
-Status: PARTIAL (base logging done in Feature 1; order logging in Feature 4)
+Status: COMPLETE
 ================================================================================
 
 Goal:
   Audit trail in logs/trading_bot.log.
 
-Done:
-  - Rotating file handler + console (INFO level)
+Implemented:
+  - Rotating file handler (DEBUG) + console (LOG_LEVEL, default INFO)
   - API request/response logging in BinanceFuturesClient
+  - DEBUG full payloads in file only; INFO summaries on console
   - Signature redacted in logs
+  - Order request/response summaries logged in bot/orders.py before submit
 
-Remaining:
-  - Log order request summary before submit
-  - DEBUG level full payloads in file only
+How to test:
+  Manual: tests\FEATURE6_TEST_CASES.txt
+  Offline: .\.venv\Scripts\python.exe -m pytest tests\test_logging_config.py -v
+  Batch: scripts\run_feature678_tests.bat
 
 ================================================================================
 FEATURE 7: EXCEPTION HANDLING
-Status: PARTIAL (base exceptions done; order flow handling pending)
+Status: COMPLETE
 ================================================================================
 
 Goal:
   Clear failures, no silent crashes.
 
-Done:
+Implemented:
   ConfigurationError, ValidationError, BinanceAPIError, NetworkError
-
-Remaining (order flows):
-  Map common Binance codes in user-friendly CLI messages:
+  bot/error_messages.py — user-friendly hints for common Binance codes:
     -1111  precision error
     -2019  margin not sufficient
     -4164  min notional
     -1021  timestamp / recvWindow
     -1022  invalid signature
     -2015  invalid API key
+  CLI uses format_binance_api_error() and format_network_error()
 
-Docs:
-  https://developers.binance.com/docs/derivatives/usds-margined-futures/error-code
+How to test:
+  Manual: tests\FEATURE7_TEST_CASES.txt
+  Offline: .\.venv\Scripts\python.exe -m pytest tests\test_error_messages.py tests\test_cli_errors.py -v
+  (trigger live: wrong SECRET_KEY -> -1022 with hint)
 
 ================================================================================
 FEATURE 8: TESTNET SMOKE TEST & POLISH
-Status: PENDING
+Status: COMPLETE
 ================================================================================
 
 Goal:
   End-to-end verification and documentation updates.
 
-Planned steps:
-  1. GET /fapi/v1/ping and /fapi/v1/time - connectivity
-  2. POST /fapi/v1/order/test - validate order params without trading
-  3. Real MARKET + LIMIT orders on demo (small size)
-  4. Update README with final examples and troubleshooting
+Implemented:
+  1. cli.py smoke_test — ping, server time, auth, validate, dry-run MARKET/LIMIT
+  2. bot/smoke_test.py — reusable smoke test runner
+  3. scripts/run_smoke_test.bat
+  4. tests/test_smoke_test.py, tests/test_integration_smoke.py
+  5. README.md updated with full CLI reference, testing, troubleshooting
+
+How to test:
+  Manual: tests\FEATURE8_TEST_CASES.txt
+  .\.venv\Scripts\python.exe cli.py smoke_test
+  scripts\run_smoke_test.bat
+  scripts\run_feature678_tests.bat
+  .\.venv\Scripts\python.exe -m pytest tests\test_smoke_test.py tests\test_cli_smoke.py -v -m "not integration"
 
 ================================================================================
 BINANCE API REFERENCE (QUICK LINKS)
@@ -382,24 +394,31 @@ PROJECT LAYOUT (CURRENT)
   ├── bot/
   │   ├── __init__.py
   │   ├── config.py
+  │   ├── error_messages.py
   │   ├── exceptions.py
   │   ├── models.py
+  │   ├── orders.py
+  │   ├── smoke_test.py
+  │   ├── validators.py
   │   ├── logging_config.py
   │   └── client/
   │       ├── __init__.py
-  │       ├── base.py       # endpoint constants
-  │       ├── signer.py     # HMAC signing
-  │       └── futures.py    # BinanceFuturesClient
+  │       ├── base.py
+  │       ├── signer.py
+  │       └── futures.py
   ├── cli/
   │   ├── __init__.py
-  │   └── main.py           # Typer commands
+  │   └── main.py
+  ├── tests/
+  ├── scripts/
   ├── cli.py
-  ├── logs/                 # runtime logs (gitignored)
-  ├── .env                  # secrets (gitignored)
+  ├── logs/
+  ├── .env
   ├── .env.example
   ├── requirements.txt
+  ├── requirements-dev.txt
   ├── README.md
-  └── FEATURES.txt          # this file
+  └── FEATURES.txt
 
 ================================================================================
 END OF FEATURE PLAN

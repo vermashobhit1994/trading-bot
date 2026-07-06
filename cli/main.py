@@ -17,6 +17,7 @@ from bot.exceptions import (
     TradingBotError,
     ValidationError,
 )
+from bot.error_messages import format_binance_api_error, format_network_error
 from bot.logging_config import setup_logging
 from bot.orders import (
     format_request_summary,
@@ -26,6 +27,7 @@ from bot.orders import (
     test_order,
     validate_order_with_exchange,
 )
+from bot.smoke_test import run_smoke_test
 from bot.validators import build_order_request
 
 app = typer.Typer(
@@ -51,10 +53,10 @@ def _handle_validation_error(exc: ValidationError) -> None:
 
 def _handle_client_errors(exc: Exception) -> None:
     if isinstance(exc, BinanceAPIError):
-        typer.secho(f"Binance API error: {exc}", fg=typer.colors.RED, err=True)
+        typer.secho(format_binance_api_error(exc), fg=typer.colors.RED, err=True)
         raise typer.Exit(code=2) from exc
     if isinstance(exc, NetworkError):
-        typer.secho(f"Network error: {exc}", fg=typer.colors.RED, err=True)
+        typer.secho(format_network_error(exc), fg=typer.colors.RED, err=True)
         raise typer.Exit(code=2) from exc
     raise exc
 
@@ -259,6 +261,33 @@ def order_cmd(
             raise typer.Exit(code=2)
 
 
+@app.command("smoke-test")
+def smoke_test_cmd() -> None:
+    """Run end-to-end demo/testnet checks: ping, auth, validation, dry-run orders."""
+    settings = load_settings()
+    typer.echo("=== Smoke Test ===")
+    typer.echo(f"Base URL: {settings.base_url}")
+    try:
+        with create_client(settings) as client:
+            results = run_smoke_test(client)
+    except (BinanceAPIError, NetworkError) as exc:
+        _handle_client_errors(exc)
+        return
+
+    passed = 0
+    for step in results:
+        status = "PASS" if step.passed else "FAIL"
+        color = typer.colors.GREEN if step.passed else typer.colors.RED
+        typer.secho(f"[{status}] {step.name}: {step.detail}", fg=color)
+        if step.passed:
+            passed += 1
+
+    typer.echo(f"\n{passed}/{len(results)} steps passed.")
+    if passed < len(results):
+        raise typer.Exit(code=2)
+    typer.secho("Smoke test completed successfully.", fg=typer.colors.GREEN)
+
+
 @app.command("version")
 def version() -> None:
     """Print application version."""
@@ -270,6 +299,7 @@ app.command("server_time")(server_time)
 app.command("test_auth")(test_auth)
 app.command("check_config")(check_config)
 app.command("validate_order")(validate_order_cmd)
+app.command("smoke_test")(smoke_test_cmd)
 
 
 def run() -> None:

@@ -22,14 +22,15 @@ def setup_logging(log_dir: Path, log_level: str = "INFO") -> None:
     log_dir.mkdir(parents=True, exist_ok=True)
     log_file = log_dir / LOG_FILE_NAME
 
-    level = getattr(logging, log_level.upper(), logging.INFO)
+    console_level = getattr(logging, log_level.upper(), logging.INFO)
     formatter = logging.Formatter(
         fmt="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
     root_logger = logging.getLogger()
-    root_logger.setLevel(level)
+    # File captures DEBUG (full payloads); console uses configured level (default INFO).
+    root_logger.setLevel(logging.DEBUG)
 
     file_handler = RotatingFileHandler(
         log_file,
@@ -38,11 +39,11 @@ def setup_logging(log_dir: Path, log_level: str = "INFO") -> None:
         encoding="utf-8",
     )
     file_handler.setFormatter(formatter)
-    file_handler.setLevel(level)
+    file_handler.setLevel(logging.DEBUG)
 
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(formatter)
-    console_handler.setLevel(level)
+    console_handler.setLevel(console_level)
 
     root_logger.handlers.clear()
     root_logger.addHandler(file_handler)
