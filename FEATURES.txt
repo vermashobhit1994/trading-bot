@@ -1,0 +1,399 @@
+================================================================================
+TRADING BOT - FEATURE PLAN & IMPLEMENTATION TRACKER
+Binance USDT-M Futures Demo / Testnet Order CLI
+================================================================================
+
+PROJECT GOAL
+------------
+A small Python application that places MARKET and LIMIT orders on Binance
+USDT-M Futures Demo/Testnet, with a clean reusable structure, logging, and
+error handling.
+
+Original requirements:
+  1. Place MARKET and LIMIT orders (USDT-M Futures Testnet/Demo)
+  2. Support BUY and SELL sides
+  3. CLI input: symbol, side, order type, quantity, price (LIMIT only)
+  4. Print order request summary, response details, success/failure message
+  5. Structured code: separate API client layer and CLI layer
+  6. Log API requests, responses, and errors to a file
+  7. Exception handling: invalid input, API errors, network failures
+
+Tech stack:
+  - Python 3.10+
+  - httpx (direct REST API calls)
+  - python-dotenv (environment config)
+  - typer (CLI)
+  - HMAC-SHA256 signing for TRADE / USER_DATA endpoints
+
+Base URL (Futures Demo):
+  https://demo-fapi.binance.com
+
+API keys source:
+  https://www.binance.com/en/demo-trading
+  (Same demo key works for Spot and Futures; each product has its own base URL)
+
+================================================================================
+FEATURE OVERVIEW
+================================================================================
+
+  #  Feature                              Est.    Status
+  --  -----------------------------------  ------  -----------
+  1   Project scaffold & config            30 min  COMPLETE
+  2   Binance Futures signed HTTP client   45 min  COMPLETE
+  3   Order models + validation            30 min  PENDING
+  4   Place MARKET / LIMIT orders          45 min  PENDING
+  5   CLI order command                    30 min  PENDING
+  6   Logging (extended for orders)        20 min  PARTIAL
+  7   Exception handling (order flows)     30 min  PARTIAL
+  8   Testnet smoke test & polish          30 min  PENDING
+
+================================================================================
+FEATURE 1: PROJECT SCAFFOLD & CONFIG
+Status: COMPLETE
+================================================================================
+
+Goal:
+  Clean package layout, env-based secrets, no hardcoded keys.
+
+Steps taken:
+  1. Created project layout:
+       bot/config.py          - load .env, base URL, API keys
+       bot/exceptions.py      - custom error types
+       bot/models.py          - Side, OrderType enums
+       bot/client/            - API endpoint constants
+       bot/logging_config.py  - file + console logging
+       cli/main.py            - Typer CLI entry point
+       cli.py                 - backward-compatible launcher
+
+  2. Added python-dotenv to load BINANCE_API_KEY and SECRET_KEY from .env
+  3. Added .gitignore (.env, logs/, .venv/, __pycache__)
+  4. Centralized BASE_URL in config (testnet vs mainnet via TRADING_ENV)
+
+Environment variables:
+  BINANCE_API_KEY
+  SECRET_KEY
+  TRADING_ENV=testnet|mainnet
+  BINANCE_FUTURES_BASE_URL=https://demo-fapi.binance.com
+  RECV_WINDOW=5000
+  LOG_LEVEL=INFO
+
+CLI commands:
+  python cli.py check-config
+  python cli.py version
+
+How to test:
+  .\.venv\Scripts\python.exe cli.py check-config
+  .\.venv\Scripts\python.exe cli.py version
+  type logs\trading_bot.log
+
+Docs:
+  https://developers.binance.com/docs/derivatives/usds-margined-futures/general-info
+
+Manual checkpoint:
+  Confirm API keys are from Binance Demo Trading (not mainnet).
+
+================================================================================
+FEATURE 2: BINANCE FUTURES SIGNED HTTP CLIENT
+Status: COMPLETE
+================================================================================
+
+Goal:
+  Reusable client that signs TRADE and USER_DATA requests (HMAC-SHA256).
+
+Steps taken:
+  1. bot/client/signer.py
+       - get_timestamp_ms()
+       - build_query_string()
+       - sign_payload() using HMAC-SHA256
+
+  2. bot/client/futures.py - BinanceFuturesClient
+       - send_public_request()  for unsigned GET endpoints
+       - send_signed_request()  adds timestamp, recvWindow, signature
+       - httpx client with 10s timeout
+       - Retries on network errors and HTTP 5xx
+       - Parses JSON; raises BinanceAPIError if code < 0
+       - Raises NetworkError on timeouts / connection failures
+       - Logs requests and responses (signature redacted)
+
+  3. CLI test commands added:
+       ping         -> GET  /fapi/v1/ping        (public)
+       server-time  -> GET  /fapi/v1/time         (public)
+       test-auth    -> GET  /fapi/v2/balance     (signed)
+
+Binance APIs used:
+  GET  /fapi/v1/ping           - connectivity check
+  GET  /fapi/v1/time           - server time
+  GET  /fapi/v2/balance        - signed auth smoke test
+  GET  /fapi/v1/exchangeInfo   - symbol filters (client method ready)
+  POST /fapi/v1/order          - place order (Feature 4)
+  POST /fapi/v1/order/test     - dry-run order (Feature 4)
+
+How to test:
+  .\.venv\Scripts\python.exe cli.py ping
+  .\.venv\Scripts\python.exe cli.py server-time
+  .\.venv\Scripts\python.exe cli.py test-auth
+  type logs\trading_bot.log
+
+Expected results:
+  ping         -> {} and "Ping successful."
+  server-time  -> {"serverTime": <milliseconds>}
+  test-auth    -> demo balances (e.g. USDT 5000) and "Signed request authentication OK."
+
+Docs:
+  Signed endpoints:
+    https://developers.binance.com/docs/derivatives/usds-margined-futures/general-info#signed-trade-and-user_data-endpoint-security
+  Signature example (Python):
+    https://github.com/binance/binance-signature-examples/blob/master/python/futures/um_futures.py
+  Error codes:
+    https://developers.binance.com/docs/derivatives/usds-margined-futures/error-code
+
+Manual checkpoint:
+  If auth fails (-1022 invalid signature, -2015 invalid API key), verify
+  SECRET_KEY and that BINANCE_FUTURES_BASE_URL is demo-fapi (not demo-api Spot).
+
+================================================================================
+FEATURE 3: ORDER MODELS + VALIDATION
+Status: PENDING
+================================================================================
+
+Goal:
+  Type-safe order input before any API call.
+
+Planned steps:
+  1. Extend bot/models.py:
+       OrderRequest dataclass: symbol, side, type, quantity, price (optional)
+       OrderResponse dataclass: orderId, status, executedQty, avgPrice
+
+  2. Create bot/validators.py:
+       - symbol: uppercase, ends with USDT
+       - quantity: > 0, use Decimal (avoid float rounding)
+       - price: required for LIMIT, forbidden for MARKET
+       - LIMIT orders: timeInForce = GTC
+
+  3. Optional: call GET /fapi/v1/exchangeInfo to validate LOT_SIZE,
+     PRICE_FILTER, and min notional before submitting.
+
+Trading best practices:
+  - Use Decimal for qty and price
+  - Respect exchange filters (step size, tick size)
+  - Default one-way position mode (positionSide = BOTH, omitted)
+
+Docs:
+  Exchange Info:
+    https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Exchange-Information
+  Filters:
+    https://developers.binance.com/docs/derivatives/usds-margined-futures/common-definition
+
+================================================================================
+FEATURE 4: PLACE MARKET & LIMIT ORDERS
+Status: PENDING
+================================================================================
+
+Goal:
+  Single place_order(order: OrderRequest) -> OrderResponse method.
+
+Planned steps:
+  1. Create bot/orders.py
+  2. Map OrderRequest to API params:
+
+       MARKET: symbol, side, type=MARKET, quantity
+       LIMIT:  symbol, side, type=LIMIT, quantity, price, timeInForce=GTC
+
+  3. Set newOrderRespType=RESULT for status, executedQty, avgPrice in response
+  4. POST /fapi/v1/order via BinanceFuturesClient.send_signed_request()
+  5. Map response to OrderResponse
+
+Order API parameters:
+  MARKET BUY/SELL:  symbol, side, type, quantity
+  LIMIT BUY/SELL:   symbol, side, type, quantity, price, timeInForce=GTC
+
+Docs:
+  New Order:
+    https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest-api/New-Order
+  Test New Order (dry run):
+    https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest-api/Test-New-Order
+
+Manual checkpoint:
+  First live test: user chooses symbol and small quantity (e.g. BTCUSDT 0.001).
+  Use POST /fapi/v1/order/test first if zero-risk validation is preferred.
+
+================================================================================
+FEATURE 5: CLI ORDER COMMAND
+Status: PENDING
+================================================================================
+
+Goal:
+  User-friendly order command with validation before API call.
+
+Planned CLI:
+  python cli.py order --symbol BTCUSDT --side BUY --type MARKET --quantity 0.001
+  python cli.py order --symbol BTCUSDT --side SELL --type LIMIT --quantity 0.001 --price 70000
+
+Arguments:
+  --symbol     required   e.g. BTCUSDT
+  --side       required   BUY | SELL
+  --type       required   MARKET | LIMIT
+  --quantity   required   positive decimal
+  --price      LIMIT only positive decimal
+
+Output format:
+  === Order Request ===
+  Symbol / Side / Type / Quantity / Price
+
+  === Order Response ===
+  Order ID / Status / Executed Qty / Avg Price
+
+  Success or failure message
+
+Exit codes:
+  0 = success
+  1 = validation / configuration error
+  2 = API / network error
+
+================================================================================
+FEATURE 6: LOGGING
+Status: PARTIAL (base logging done in Feature 1; order logging in Feature 4)
+================================================================================
+
+Goal:
+  Audit trail in logs/trading_bot.log.
+
+Done:
+  - Rotating file handler + console (INFO level)
+  - API request/response logging in BinanceFuturesClient
+  - Signature redacted in logs
+
+Remaining:
+  - Log order request summary before submit
+  - DEBUG level full payloads in file only
+
+================================================================================
+FEATURE 7: EXCEPTION HANDLING
+Status: PARTIAL (base exceptions done; order flow handling pending)
+================================================================================
+
+Goal:
+  Clear failures, no silent crashes.
+
+Done:
+  ConfigurationError, ValidationError, BinanceAPIError, NetworkError
+
+Remaining (order flows):
+  Map common Binance codes in user-friendly CLI messages:
+    -1111  precision error
+    -2019  margin not sufficient
+    -4164  min notional
+    -1021  timestamp / recvWindow
+    -1022  invalid signature
+    -2015  invalid API key
+
+Docs:
+  https://developers.binance.com/docs/derivatives/usds-margined-futures/error-code
+
+================================================================================
+FEATURE 8: TESTNET SMOKE TEST & POLISH
+Status: PENDING
+================================================================================
+
+Goal:
+  End-to-end verification and documentation updates.
+
+Planned steps:
+  1. GET /fapi/v1/ping and /fapi/v1/time - connectivity
+  2. POST /fapi/v1/order/test - validate order params without trading
+  3. Real MARKET + LIMIT orders on demo (small size)
+  4. Update README with final examples and troubleshooting
+
+================================================================================
+BINANCE API REFERENCE (QUICK LINKS)
+================================================================================
+
+  USDT-M Futures overview:
+    https://developers.binance.com/docs/derivatives/usds-margined-futures/general-info
+
+  New Order (POST /fapi/v1/order):
+    https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest-api/New-Order
+
+  Test New Order:
+    https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest-api/Test-New-Order
+
+  Exchange Information:
+    https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Exchange-Information
+
+  Authentication / signing:
+    https://developers.binance.com/docs/derivatives/usds-margined-futures/general-info#signed-trade-and-user_data-endpoint-security
+
+  Error codes:
+    https://developers.binance.com/docs/derivatives/usds-margined-futures/error-code
+
+  Spot Demo (NOT for this bot):
+    https://demo-api.binance.com/api
+
+  Futures Demo (USE THIS):
+    https://demo-fapi.binance.com
+
+  Demo Trading portal:
+    https://www.binance.com/en/demo-trading
+
+================================================================================
+ASSUMPTIONS
+================================================================================
+
+  Environment:
+    - Futures Demo API keys (not mainnet)
+    - Base URL: https://demo-fapi.binance.com
+    - System clock reasonably accurate (signed requests use millisecond timestamp)
+
+  Trading:
+    - USDT-M perpetual futures only (BTCUSDT, ETHUSDT, etc.)
+    - One-way position mode (positionSide = BOTH)
+    - LIMIT orders use timeInForce = GTC
+    - Quantity/price must satisfy exchange filters
+    - Sufficient demo margin in wallet
+
+  Software:
+    - Python 3.10+ in isolated virtual environment (.venv)
+    - Outbound HTTPS to demo-fapi.binance.com allowed
+    - Secrets only in .env (never committed to git)
+
+================================================================================
+MANUAL CHECKPOINTS (WHERE USER INPUT IS NEEDED)
+================================================================================
+
+  1. Testnet/demo base URL confirmed (demo-fapi vs legacy testnet.binancefuture.com)
+  2. API keys are Demo Trading keys (not mainnet)
+  3. Position mode: one-way (default) or hedge (not yet supported)
+  4. First live order: symbol + quantity chosen by user
+  5. Exchange filter validation: strict vs basic
+  6. Insufficient demo balance: user tops up via demo portal
+
+================================================================================
+PROJECT LAYOUT (CURRENT)
+================================================================================
+
+  trading-bot/
+  ├── bot/
+  │   ├── __init__.py
+  │   ├── config.py
+  │   ├── exceptions.py
+  │   ├── models.py
+  │   ├── logging_config.py
+  │   └── client/
+  │       ├── __init__.py
+  │       ├── base.py       # endpoint constants
+  │       ├── signer.py     # HMAC signing
+  │       └── futures.py    # BinanceFuturesClient
+  ├── cli/
+  │   ├── __init__.py
+  │   └── main.py           # Typer commands
+  ├── cli.py
+  ├── logs/                 # runtime logs (gitignored)
+  ├── .env                  # secrets (gitignored)
+  ├── .env.example
+  ├── requirements.txt
+  ├── README.md
+  └── FEATURES.txt          # this file
+
+================================================================================
+END OF FEATURE PLAN
+================================================================================
